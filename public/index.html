@@ -85,10 +85,15 @@
             </div>
     
             <div class="text-box">
-                <h1>Chart</h1>
+                <h1>Expenses in Chart.js chart</h1>
                 <p>
                     <canvas id="myChart" width="400" height="400"></canvas>
                 </p>
+            </div>
+
+            <div class="text-box">
+                <h1>Expenses in D3.js Chart</h1>
+                <div id="d3chart"></div>
             </div>
 
         </div>
@@ -105,6 +110,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.min.js"></script>
 
+<script src="https://d3js.org/d3.v7.min.js"></script>
+
 <script>
     var dataSource = {
         datasets: [
@@ -120,6 +127,8 @@
         ],
         labels: []
     };
+    
+    let myChartInstance;
 
     function createChart() {
         var ctx = document.getElementById('myChart').getContext('2d');
@@ -132,7 +141,7 @@
     function getBudget() {
             axios.get('/budget')
             .then(function (res) {
-                console.log(res);
+                console.log("Chart.js data:", res.data);
                 for (var i = 0; i < res.data.myBudget.length; i++) {
                     dataSource.datasets[0].data[i] = res.data.myBudget[i].budget;
                     dataSource.labels[i] = res.data.myBudget[i].title;
@@ -142,5 +151,90 @@
     }
     getBudget();
 </script>
+
+// Ref: D3.js donut chart adapted from dbuezas gist https://gist.github.com/dbuezas/9306799
+
+<script>
+axios.get('/budget')
+  .then(function(res) {
+    const data = res.data.myBudget;
+
+    const width = 700;
+    const height = 500;
+    const margin = 100;
+    const radius = Math.min(width, height) / 2 - margin;
+
+    const svg = d3.select("#d3chart")
+      .append("svg")
+        .attr("width", width)
+        .attr("height", height)
+      .append("g")
+        .attr("transform", `translate(${width / 2},${height / 2})`);
+
+    const color = d3.scaleOrdinal()
+      .domain(data.map(d => d.title))
+      .range(d3.schemeCategory10);
+
+    const pie = d3.pie()
+      .sort(null)
+      .value(d => d.budget);
+
+    const data_ready = pie(data);
+
+    const arc = d3.arc()
+      .innerRadius(radius * 0.5)   
+      .outerRadius(radius * 0.8);
+
+    const outerArc = d3.arc()
+      .innerRadius(radius * 0.9)
+      .outerRadius(radius * 0.9);
+
+    // slices
+    svg.selectAll('path.slice')
+      .data(data_ready)
+      .join('path')
+        .attr('class', 'slice')
+        .attr('d', arc)
+        .attr('fill', d => color(d.data.title))
+        .attr("stroke", "white")
+        .style("stroke-width", "2px")
+        .style("opacity", 0.7);
+
+    // Polylines
+    svg.selectAll('polyline')
+      .data(data_ready)
+      .join('polyline')
+        .attr("points", function(d) {
+          const posA = arc.centroid(d); // slice center
+          const posB = outerArc.centroid(d); // just outside
+          const midAngle = d.startAngle + (d.endAngle - d.startAngle) / 2;
+          const posC = outerArc.centroid(d);
+          posC[0] = radius * 1.05 * (midAngle < Math.PI ? 1 : -1); // shift left/right
+          return [posA, posB, posC];
+        })
+        .style("fill", "none")
+        .style("stroke", "black")
+        .style("stroke-width", "1px");
+
+    // Labels
+    svg.selectAll('text')
+      .data(data_ready)
+      .join('text')
+        .text(d => `${d.data.title} (${d.data.budget})`)
+        .attr("transform", function(d) {
+          const midAngle = d.startAngle + (d.endAngle - d.startAngle) / 2;
+          const pos = outerArc.centroid(d);
+          pos[0] = radius * 1.1 * (midAngle < Math.PI ? 1 : -1);
+          return `translate(${pos})`;
+        })
+        .style("text-anchor", function(d) {
+          const midAngle = d.startAngle + (d.endAngle - d.startAngle) / 2;
+          return midAngle < Math.PI ? "start" : "end";
+        })
+        .style("font-size", "14px");
+  })
+  .catch(err => console.error("Error loading D3 chart data:", err));
+</script>
+
 </body>
 </html>
